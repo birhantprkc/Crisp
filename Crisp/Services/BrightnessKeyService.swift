@@ -142,11 +142,11 @@ final class BrightnessKeyService: @unchecked Sendable {
         if pollTimer == nil {
             Self.log.notice("key tap refused (Accessibility not granted for this build?), retrying every 2 s")
             pollTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] timer in
+                // The timer stays out of the main-actor block below. Handing it in reads as
+                // a race even though both halves run on the main run loop.
+                guard let self else { timer.invalidate(); return }
                 // Scheduled from the main actor, so it fires on the main run loop.
-                MainActor.assumeIsolated {
-                    guard let self else { timer.invalidate(); return }
-                    self.armIfSettled()
-                }
+                MainActor.assumeIsolated { self.armIfSettled() }
             }
         }
         if activationObserver == nil {
@@ -195,9 +195,10 @@ final class BrightnessKeyService: @unchecked Sendable {
         // ponytail: 0.5s poll, well inside the ~1s WindowServer tap-timeout; AXIsProcessTrusted()
         // is a cheap TCC lookup so 2x/sec while armed is negligible.
         trustWatchdog = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] timer in
+            // As with the poll timer, the timer stays out of the main-actor block.
+            guard let self else { timer.invalidate(); return }
             // Scheduled from the main actor, so it fires on the main run loop.
             MainActor.assumeIsolated {
-                guard let self else { timer.invalidate(); return }
                 guard self.eventTap != nil, !AXIsProcessTrusted() else { return }
                 Self.log.notice("Accessibility trust dropped, tearing the key tap down")
                 self.disabledAt = ProcessInfo.processInfo.systemUptime
@@ -300,7 +301,12 @@ final class BrightnessKeyService: @unchecked Sendable {
     /// HUD, and returns nil to CONSUME the event when we adjusted an external display (so macOS does
     /// not also bump the built-in), or a pass-through of `event` when we did not handle it (target
     /// not attached / cursor on built-in / no controllable external).
+    /// Option+Shift moves a quarter of a stop, the finer grid macOS itself uses.
     nonisolated private func routeBrightnessPress(up: Bool, event: CGEvent) -> Unmanaged<CGEvent>? {
+        // macOS moves the built-in a quarter of a stop while Option and Shift are
+        // held, so Crisp moves the displays it drives the same way. The built-in
+        // under the pointer still passes through below, where macOS does it itself.
+        let fine = event.flags.contains([.maskAlternate, .maskShift])
         // Route by user preference. Read on the main actor, this callback runs on
         // the main run loop (see class docs), so assumeIsolated is safe here.
         // Which displays a press moves is the same rule for a key and for a bound
@@ -310,7 +316,7 @@ final class BrightnessKeyService: @unchecked Sendable {
         let hasExplicitTargets = MainActor.assumeIsolated { self.explicitTargets() != nil }
         if hasExplicitTargets {
             Task { @MainActor in
-                if let targets = self.explicitTargets() { self.adjustDisplays(targets, up: up) }
+                if let targets = self.explicitTargets() { self.adjustDisplays(targets, up: up, fine: fine) }
             }
             // Consume: we adjust every target (built-in included) ourselves, so
             // macOS must not also bump the built-in on top.
@@ -351,20 +357,7 @@ final class BrightnessKeyService: @unchecked Sendable {
         Task { @MainActor in
             let displays = DisplayManagerAccessor.shared.displays
             guard let display = displays.first(where: { $0.displayID == displayID }) else { return }
-            // Step from the fade's target while one is running, not from the value
-            // it is passing through, or a held key never gets past the first stop.
-            let from = BrightnessService.shared.inFlightTarget(for: displayID) ?? display.brightness
-            let newBrightness = max(0.0, min(display.maxBrightness,
-                                             BrightnessKeySteps.next(from: from, up: up)))
-            // Use smooth animation, cancels any in-progress animation automatically.
-            BrightnessService.shared.setBrightnessSmooth(newBrightness, for: display)
-
-            // Show OSD on the external display where brightness was adjusted.
-            if let screen = NSScreen.screens.first(where: {
-                ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID) == displayID
-            }) {
-                BrightnessHUDService.shared.show(brightness: newBrightness / display.maxBrightness * 100.0, on: screen)
-            }
+            self.adjustDisplays([display], up: up, fine: fine)
         }
 
         // Return nil to consume (suppress) the event so macOS doesn't also adjust built-in brightness.
@@ -447,14 +440,17 @@ final class BrightnessKeyService: @unchecked Sendable {
     /// Moves each given display (built-in or external) to its next stop,
     /// through BrightnessService's smooth fade (reusing its DDC/gamma/IOKit paths +
     /// coalescing), and shows the brightness HUD on each display's own screen.
-    /// Backs the `.allDisplays` and `.selected` key modes and the shortcuts.
+    /// Backs every key mode and the shortcuts. `fine` is the quarter step the keys
+    /// ask for with Option+Shift held; a bound shortcut always moves a whole stop.
     @MainActor
-    private func adjustDisplays(_ displays: [DisplayInfo], up: Bool) {
+    private func adjustDisplays(_ displays: [DisplayInfo], up: Bool, fine: Bool = false) {
         let screens = NSScreen.screens
         for display in displays {
+            // Step from the fade's target while one is running, not from the value
+            // it is passing through, or a held key never gets past the first stop.
             let from = BrightnessService.shared.inFlightTarget(for: display.displayID) ?? display.brightness
             let newBrightness = max(0.0, min(display.maxBrightness,
-                                             BrightnessKeySteps.next(from: from, up: up)))
+                                             BrightnessKeySteps.next(from: from, up: up, fine: fine)))
             BrightnessService.shared.setBrightnessSmooth(newBrightness, for: display)
             if let screen = screens.first(where: {
                 ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID) == display.displayID
