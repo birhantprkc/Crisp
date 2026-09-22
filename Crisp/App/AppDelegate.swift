@@ -371,7 +371,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // them: toggle directly, swallow the event so the button never tracks,
         // and showPanel/closePanel fully own the highlight. This also opens on
         // press with either button, like native menus. Cmd-clicks pass through
-        // so the item can still be cmd-dragged.
+        // so the item can still be cmd-dragged. Presses that land here are this
+        // interceptor's alone: the panel's auto-dismiss paths skip them
+        // (isPointerOverStatusItem), so togglePanel is the single owner of
+        // whether the panel is open.
         clickInterceptor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
             guard let self,
                   let button = self.statusItem?.button,
@@ -839,6 +842,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .store(in: &canvasCancellables)
     }
 
+    /// True while the pointer sits over Crisp's own status item, the button the
+    /// click interceptor in `setupStatusItem` watches. Presses there are that
+    /// interceptor's to toggle, so the panel's auto-dismiss paths (resign-key,
+    /// outside click) treat them as neither a dismissal nor a click-away.
+    private var isPointerOverStatusItem: Bool {
+        guard let button = statusItem?.button, let window = button.window else { return false }
+        return window.convertToScreen(button.convert(button.bounds, to: nil))
+            .contains(NSEvent.mouseLocation)
+    }
+
     @objc private func togglePanel() {
         if isPanelShown {
             closePanel()
@@ -1012,8 +1025,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     // OTHER apps (= outside the panel). But during the dark
                     // mode crossfade the system's snapshot overlay intercepts
                     // every click, so an inside click arrives here too; close
-                    // only when the cursor is genuinely outside the panel.
-                    if visible.contains(NSEvent.mouseLocation) { return }
+                    // only when the cursor is genuinely outside the panel, and
+                    // never for a press on our own status item, which the click
+                    // interceptor owns (isPointerOverStatusItem).
+                    if visible.contains(NSEvent.mouseLocation) || self.isPointerOverStatusItem { return }
                     self.closePanel()
                 }
             }
@@ -1097,6 +1112,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             // noise, not the user clicking away (those still close via the global
             // click monitor, which ignores this grace).
             if Date() < PanelOpenGuard.resignKeyGraceUntil { return }
+            // Takes key, but is not a click-away: the press is on Crisp's own
+            // status item, so its interceptor is the one to toggle the panel
+            // (isPointerOverStatusItem). Closing here too would let that toggle
+            // reopen the panel it just hid.
+            if isPointerOverStatusItem { return }
             // Same overlay caveat as the click monitor: during the crossfade
             // the snapshot window can steal key while the user is clicking
             // INSIDE the panel; don't treat that as clicking away. The window
