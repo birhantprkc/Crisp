@@ -25,8 +25,8 @@ final class OSDBannerModel: ObservableObject {
 /// tuned against a screenshot of the native capsule on the same screen.
 @available(macOS 26.0, *)
 struct OSDBannerView: View {
-    /// Visible capsule size, measured from the native HUD on 26.5.1 once it
-    /// has settled (see OSDBannerService.cornerRadius).
+    /// Visible capsule size, measured from the native HUD once it has settled
+    /// (see OSDBannerService.cornerRadius).
     static let size = CGSize(width: 292, height: 64)
 
     @ObservedObject var model: OSDBannerModel
@@ -54,8 +54,9 @@ struct OSDBannerView: View {
                 .frame(height: 16)
                 // A quarter point down, which puts the baseline where the
                 // HUD's sits: 22.75 pt under the top of the capsule, measured
-                // at 2x on both.
-                .offset(y: 0.25)
+                // at 2x on both. macOS 27 carries its label one row higher,
+                // measured settled on the same rows.
+                .offset(y: OSDBannerService.drawsMacOS27Capsule ? -0.75 : 0.25)
             HStack(spacing: 4) {
                 Image(systemName: leadingSymbol)
                     .font(.system(size: 13))
@@ -143,7 +144,11 @@ struct OSDBannerView: View {
     private var ticks: some View {
         HStack(spacing: 0) {
             ForEach(0..<17) { tick in
-                Circle().fill(.white.opacity(0.11)).frame(width: 2, height: 2)
+                // macOS 27 draws the dots brighter: 28 levels over the body
+                // against the 16 that 0.11 draws, measured settled over a mid
+                // grey backdrop.
+                Circle().fill(.white.opacity(OSDBannerService.drawsMacOS27Capsule ? 0.19 : 0.11))
+                    .frame(width: 2, height: 2)
                 if tick < 16 { Spacer(minLength: 0) }
             }
         }
