@@ -172,7 +172,11 @@ struct BrightnessSliderView: View {
                         .allowsHitTesting(false)
                     }
                 }
-                .controlSize(.small)
+                // Control Centre's own brightness slider grew on macOS 27:
+                // measured on its display panel the track is 6 pt and the knob
+                // 16, against the 4 and 14 that .small draws. .regular is the
+                // size that matches it, and 26 keeps the smaller one.
+                .controlSize(SystemLook.isMacOS27OrLater ? .regular : .small)
                 .accessibilityLabel("Display brightness")
                 .accessibilityValue("\(Int(localBrightness))%")
                 .onChange(of: localBrightness) { _, newValue in
@@ -389,7 +393,7 @@ struct CombinedBrightnessView: View {
                     }
                 }
                 .tint(Color.accentColor)
-                .controlSize(.small)
+                .controlSize(SystemLook.isMacOS27OrLater ? .regular : .small)
                 .accessibilityLabel("Combined brightness")
                 .accessibilityValue("\(Int(combinedBrightness))%")
                 .onChange(of: combinedBrightness) { _, newValue in

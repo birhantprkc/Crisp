@@ -883,6 +883,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         var screen = btnScreen
         var anchorMidX = btnFrame.midX
         var topY = btnFrame.minY - 1
+        // macOS 27's status item window reaches three points past the menu bar
+        // it sits in, so its bottom edge is no longer where a menu hangs from:
+        // measured against the Display menu on the same screen, the system's
+        // top row sits one pixel under the bar's bottom row. The bar's own
+        // bottom edge is the anchor, and only when there is a bar: with it
+        // hidden, visibleFrame runs to the top of the screen and the item
+        // window is the only anchor left.
+        if SystemLook.isMacOS27OrLater, let screen = btnScreen,
+           screen.frame.maxY - screen.visibleFrame.maxY > 1 {
+            topY = screen.visibleFrame.maxY - 1
+        }
         // After a reconnect storm, prefer the display the panel was opened on if
         // it's online again. The menu bar mirrors across displays, so mirror the
         // status item's offset from the right edge onto the origin screen.

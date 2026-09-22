@@ -255,6 +255,26 @@ final class PanelCanvas {
     private weak var shellView: NSView?
     private weak var shadowView: NSView?
     weak var shadowMask: CAShapeLayer?
+    /// The light line along the bottom edge on macOS 27, where the panel's own
+    /// rim is drawn per edge instead of running white all the way round. Its
+    /// zPosition keeps it over the blocks whatever is added to the shell after
+    /// it (the footer clip goes in later), and the shell's rounded mask cuts
+    /// it at the two corners.
+    private let bottomEdge = CALayer()
+    /// Whether the twin's bottom stroke is cut, which is macOS 27 in dark
+    /// mode. Kept here rather than read per tick: layoutNow runs on every
+    /// frame of a flight and useFlightShadow already resolves the appearance
+    /// on every open.
+    private var hidesBottomRim = false
+    /// Fitted against a native menu on the same wallpaper, both at 1x, as the
+    /// median of the edge row over the body. The system lifts its bottom row
+    /// 32 levels over a dark wallpaper and 24 over a light one, and its sides
+    /// 5, which the glass alone already draws as 8 with no border on top. So
+    /// only the bottom edge carries a line. It composites straight over the
+    /// body, so the two backdrops give 0.161 and 0.193 and this sits between
+    /// them.
+    private static let bottomEdgeColor = NSColor(white: 1, alpha: 0.175)
+    private static let bottomEdgeWidth: CGFloat = 1
     /// Settled shell height from the last layout, for windowTight().
     private var lastShellH: CGFloat = 0
     var isShown: () -> Bool = { false }
@@ -306,6 +326,11 @@ final class PanelCanvas {
         self.shadowView = shadow
         viewport.addSubview(doc)
         shell.addSubview(viewport)
+        if SystemLook.isMacOS27OrLater {
+            bottomEdge.backgroundColor = Self.bottomEdgeColor.cgColor
+            bottomEdge.zPosition = 1
+            shell.layer?.addSublayer(bottomEdge)
+        }
         viewport.onScroll = { [weak self] delta in
             guard let self else { return }
             self.scrollOffset -= delta
@@ -565,18 +590,37 @@ final class PanelCanvas {
         let shellR = NSRect(x: sideMargin, y: (rootH - topMargin - shellH).rounded(),
                             width: width, height: shellH)
         if let shell = shellView, shell.frame != shellR { shell.frame = shellR }
+        // Bottom left of the shell's own layer, which is unflipped, so the
+        // line stays put through a flight and only follows the panel width.
+        let edgeR = CGRect(x: 0, y: 0, width: width, height: Self.bottomEdgeWidth)
+        if bottomEdge.frame != edgeR {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            bottomEdge.frame = edgeR
+            CATransaction.commit()
+        }
         // The twin is outset ONE DEVICE PIXEL (its border strokes outside
         // the glass): the native rim is a 1px hairline at any backing scale,
         // so the outset is 1/scale points, not 1pt. Shadow geometry stays
         // the true shell rect, and the knockout mask removes the shadow
         // interior so the glass backdrop never samples it.
         let px = 1 / max(panel.backingScaleFactor, 1)
-        let svR = shellR.insetBy(dx: -px, dy: -px)
+        // In dark mode macOS 27 ends its menus with the light line and then
+        // the wallpaper: the dark hairline runs down the sides and the top
+        // and not under the bottom edge. So there the twin stops at the
+        // shell's bottom edge instead of one pixel below it, which leaves its
+        // bottom stroke inside the knocked-out interior. Light mode keeps the
+        // stroke, which the system draws there (202 under an edge of 255 over
+        // a background of 245). The shadow geometry does not move either way:
+        // the inner path sits at the same place in screen space.
+        let svR = hidesBottomRim ? NSRect(x: shellR.minX - px, y: shellR.minY,
+                                          width: shellR.width + 2 * px, height: shellR.height + px)
+                                 : shellR.insetBy(dx: -px, dy: -px)
         if let sv = shadowView, sv.frame != svR {
             sv.frame = svR
             CATransaction.begin()
             CATransaction.setDisableActions(true)
-            let inner = CGRect(x: px, y: px, width: shellR.width, height: shellR.height)
+            let inner = CGRect(x: px, y: hidesBottomRim ? 0 : px, width: shellR.width, height: shellR.height)
             let innerPath = CGPath(roundedRect: inner, cornerWidth: 16, cornerHeight: 16, transform: nil)
             sv.layer?.shadowPath = innerPath
             sv.layer?.cornerRadius = 16 + px
@@ -653,15 +697,38 @@ final class PanelCanvas {
         // bar, which is what native menus follow.
         let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         // The white inner line is a full point (2px at 2x, video-measured),
-        // unlike the black rim, which is a 1-device-pixel hairline.
-        shellView?.layer?.borderWidth = dark ? 1 : 0
+        // unlike the black rim, which is a 1-device-pixel hairline. macOS 27
+        // flattened the menus: the line round the sides and the top is gone
+        // and only the bottom edge carries one, so there the border stays off
+        // and bottomEdge draws it.
+        let flat = SystemLook.isMacOS27OrLater
+        shellView?.layer?.borderWidth = dark && !flat ? 1 : 0
+        bottomEdge.isHidden = !dark
+        hidesBottomRim = flat && dark
         // The native rim and blur are appearance-dependent: rim ~0.29 black
         // in light mode vs near-black (~0.85) in dark; the blur runs ~0.21
-        // light vs ~0.37 dark (bottom edge 15.7% vs 20% darkening).
+        // light vs ~0.37 dark (bottom edge 15.7% vs 20% darkening). macOS 27
+        // draws the dark hairline lighter, and it is black at a fixed alpha:
+        // over a wallpaper of 28.5 the system reads 9.8 and over one of 135.5
+        // it reads 55.7, which one alpha of 0.57 fits to two levels at both
+        // ends.
         shadowView?.layer?.borderColor = NSColor.black
-            .withAlphaComponent(dark ? 0.85 : 0.29).cgColor
-        shadowView?.shadow?.shadowColor = NSColor.black
-            .withAlphaComponent(dark ? 0.37 : 0.21)
+            .withAlphaComponent(dark ? (flat ? 0.58 : 0.85) : 0.29).cgColor
+        // macOS 27 also lightened the light mode shadow: beside the panel the
+        // system darkens its background by 7 levels of 147 at the edge, where
+        // 0.21 black draws 19 of 136 over the same wallpaper. Dark mode keeps
+        // 0.37, which already lands on the system's 10 levels.
+        //
+        // A whole NSShadow, not a new colour on the one the view holds: AppKit
+        // syncs the view's shadow onto the layer on a display pass, and
+        // mutating the object in place does not ask for one, so the new alpha
+        // never reaches the screen.
+        let menuShadow = NSShadow()
+        menuShadow.shadowColor = NSColor.black
+            .withAlphaComponent(dark ? 0.37 : (flat ? 0.08 : 0.21))
+        menuShadow.shadowBlurRadius = 8.5
+        menuShadow.shadowOffset = NSSize(width: 0, height: -4)
+        shadowView?.shadow = menuShadow
         CATransaction.commit()
         panel?.hasShadow = false
     }
