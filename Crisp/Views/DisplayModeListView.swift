@@ -389,6 +389,9 @@ final class DisplayModeController: ObservableObject {
         // operation (so the row height, and the icon centered against it, don't jump mid-prompt)
         // and only clears once the dense modes actually enumerate.
         guard !smoothModesPresent else { return nil }
+        guard HiDPIService.smoothScalingSupported else {
+            return String(localized: "Not available on this Mac. Its chip can't draw scaled sizes larger than the display")
+        }
         return smoothWouldPrompt
             // swiftlint:disable:next line_length - localized literal, splitting would change its catalog key
             ? String(localized: "Adds finer in-between steps for how large everything looks. Enabling asks for an administrator password and briefly flashes the screen")
@@ -895,6 +898,7 @@ struct ModeTailBlock: View {
         }
         .toggleStyle(.switch)
         .controlSize(.small)
+        .disabled(!HiDPIService.smoothScalingSupported)
         .padding(.horizontal, 12)
         .padding(.vertical, 3)
         .onAppear {

@@ -2242,6 +2242,22 @@
         }
       }
     },
+    "Not available on this Mac. Its chip can't draw scaled sizes larger than the display" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Mac 不支持此功能。其芯片无法绘制大于显示器分辨率的缩放尺寸"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 Mac 不支援此功能。其晶片無法繪製大於顯示器解析度的縮放尺寸"
+          }
+        }
+      }
+    },
     "Notch" : {
       "extractionState" : "stale",
       "localizations" : {
