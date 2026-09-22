@@ -784,7 +784,7 @@ final class PhysicalDisplayToggleService: ObservableObject {
     ///
     /// That invariant is chosen over the memory, deliberately, and it has a cost worth
     /// stating: boot with the remembered display as the only screen attached and the refusal
-    /// is what happens, so the choice is forgotten by a single boot in that configuration —
+    /// is what happens, so the choice is forgotten by a single boot in that configuration,
     /// the complaint #93 opened with, in the one arrangement where honouring it would mean
     /// booting to a black machine. A list that can name a display the user is looking at is
     /// the worse failure, so the trade stands rather than being an oversight.
@@ -843,10 +843,10 @@ final class PhysicalDisplayToggleService: ObservableObject {
     /// back by itself once the remembered display goes off again.
     ///
     /// Taking the snapshot live inside the re-apply is too late, and that is measured rather
-    /// than reasoned (@didriksg on #101): the enable that brings the remembered display back
+    /// than reasoned (#101): the enable that brings the remembered display back
     /// has already moved the others to WindowServer's stored arrangement for the larger set
     /// before the re-apply runs, so a live snapshot captures the moved state, and the restore
-    /// then pins it and undoes WindowServer's own correction — the built-in went 1352x878 ->
+    /// then pins it and undoes WindowServer's own correction: the built-in went 1352x878 ->
     /// 1512x982 on the enable, was put back to 1352x878 when the display went off, and the
     /// restore pushed it to 1512x982 again. Empty only at launch, where there is no earlier
     /// refresh and the live snapshot is all there is.
@@ -880,7 +880,7 @@ final class PhysicalDisplayToggleService: ObservableObject {
             // Same as disconnect(): WindowServer applies its stored arrangement for the smaller
             // display set the moment this one goes off, which moves the others (#108). A
             // re-applied disconnect goes through the same drop, at boot every time, so it needs
-            // the same restore — but to the modes from before the display resurfaced, not to
+            // the same restore, but to the modes from before the display resurfaced, not to
             // the ones its own enable produced (see baselineModes).
             if case .failure(.timedOut) = await setEnabled(false, displayID: liveID) {
                 timedOut = true
@@ -916,14 +916,14 @@ final class PhysicalDisplayToggleService: ObservableObject {
             // waiting, but the commit is still in the window server's hands, and #33 has one
             // held for 29.5s. Dropping the record there hands that commit a display with
             // nothing left to name it. So the record stays and the next refresh decides, which
-            // lets the list name a lit display for one refresh — a bounded cost, against a
+            // lets the list name a lit display for one refresh, a bounded cost, against a
             // stranding no refresh undoes. A disable that genuinely fails still drops it, so a
             // display that cannot be switched off cannot pull a fresh transaction out of every
             // refresh.
             Self.log.notice("record dropped for \(recordUUID, privacy: .public) id \(liveID, privacy: .public): still lit")
             disconnected.remove(at: idx)
         } else {
-            // Off, whether or not the transaction said so — and that difference is the whole
+            // Off, whether or not the transaction said so, and that difference is the whole
             // reason this is decided by enumeration. A disable that reports an error and takes
             // anyway leaves the display switched off at the window server, where the record is
             // the only handle the Reconnect row has on it. Dropping it there strands the

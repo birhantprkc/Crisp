@@ -55,7 +55,7 @@ final class OSDBannerService {
     /// away from grey; the HUD keeps 1.26 of it, so a coloured window behind
     /// the banner stayed noticeably duller than behind the HUD. Measured on
     /// four saturated backdrops the HUD lands on the same brightness line as
-    /// ours to a tenth of a level and multiplies what is left of the colour by
+    /// this one to a tenth of a level and multiplies what is left of the colour by
     /// 1.26 every time, so the sample is saturated by 1.26 / 0.657 after the
     /// grey. Over a strong green the HUD reads 17, 168, 55 and so does this.
     static let backdropSaturation = 1.26 / (1 - 0.343)
@@ -95,18 +95,17 @@ final class OSDBannerService {
     /// blurs the smaller sample.
     ///
     /// The measure is the energy in each scale band inside the capsule, over
-    /// the same page of text behind both. Two earlier versions of it were
-    /// wrong and both flattered this. A sparse page let the bare strips the
-    /// measure reads fall between lines, so the HUD's own number moved 16
-    /// percent run to run; the page is dense now and both sides repeat to the
-    /// decimal. And a cumulative measure, the energy above each scale, piles
-    /// every finer band into each number, so all five came out in the same
-    /// ratio and said nothing. Band k is boxmean(k) - boxmean(2k).
+    /// the same page of text behind both. Band k is boxmean(k) - boxmean(2k):
+    /// a cumulative measure, the energy above each scale, piles every finer
+    /// band into each number, so all five come out in the same ratio and say
+    /// nothing. The page has to be dense, since a sparse one lets the bare
+    /// strips the measure reads fall between lines and the HUD's own number
+    /// moves 16 percent run to run.
     ///
     /// Across 1-2, 2-4, 4-8, 8-16 and 16-32 pixels the HUD reads 2.56, 2.65,
     /// 3.21, 3.37 and 3.25: nearly flat. A gaussian is not flat, so no single
-    /// radius holds both ends. 2.0, which this shipped on the old measure, is
-    /// three and a half times too soft at 1-2 pixels. 1.0 lands the two fine
+    /// radius holds both ends. 2.0 is three and a half times too soft at 1-2
+    /// pixels. 1.0 lands the two fine
     /// bands (2.33 and 2.71) and runs about half again too sharp at the coarse
     /// ones, and it is the best of the sweep by a wide margin.
     ///
@@ -117,8 +116,8 @@ final class OSDBannerService {
     /// (inputBlurRadius with inputBlurOpacity0...4 and inputBlurDistance0...4)
     /// changes nothing at any radius, with or without distances and with or
     /// without the face; the layer's opacity does not mix a sharp share in
-    /// either, since at 0.90 the profile is identical to 1.0, which corrects
-    /// what an earlier round recorded here; and stacking two backdrop layers
+    /// either, since at 0.90 the profile is identical to 1.0; and stacking two
+    /// backdrop layers
     /// does not mix, because the upper one samples what is already composited
     /// below it.
     ///
@@ -317,7 +316,7 @@ final class OSDBannerService {
     /// states). An accessory app's window can, though: the Cua Driver desktop
     /// tool keeps an empty overlay over a whole display while it runs, and
     /// without the owner check the banner centred on the midline, 708 pt from
-    /// its item (measured 2026-09-07).
+    /// its item.
     ///
     /// The answer is held briefly per display. This runs on every key press,
     /// and the window list is a round trip to the window server: usually about
@@ -1045,9 +1044,9 @@ final class OSDBadgeView: NSView {
     /// way the system's shadow is a black at 0.079 one point outside the disc,
     /// 0.044 five points out, 0.024 eleven out and 0.007 twenty-two out, which
     /// is the same profile over two backdrops. Read it there and not by eye:
-    /// what made an earlier one read as a drawn circle was the near end and not
-    /// the reach, and what made this one read too wide was a tail a third to a
-    /// half too strong from eleven points out. A blur instead of a gradient
+    /// the near end is what reads as a drawn circle, not the reach, and a tail
+    /// a third to a half too strong from eleven points out is what reads too
+    /// wide. A blur instead of a gradient
     /// does not do it either, since the tail is far longer than any blur's.
     ///
     /// The dark appearance carries its own, weaker profile, which the same
@@ -1092,8 +1091,8 @@ final class OSDBadgeView: NSView {
     /// covers 29 pixels at 1x and its ink adds up to about 1900 levels below
     /// the disc, where 9 point bold covers 29 at 1975 and every lighter weight
     /// leaves the X too thin (8.5 regular covers 19 at 1003). Half a point over
-    /// the 9 the ink fit asked for, which is where Didrik wanted it. Its colour
-    /// follows the appearance, see applyAppearance.
+    /// the 9 the ink fit asked for. Its colour follows the appearance, see
+    /// applyAppearance.
     func addGlyph() {
         let config = NSImage.SymbolConfiguration(pointSize: 9.5, weight: .bold)
         guard let image = NSImage(systemSymbolName: "xmark", accessibilityDescription: nil)?

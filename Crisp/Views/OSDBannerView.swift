@@ -34,13 +34,12 @@ struct OSDBannerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(model.title)
-                // Smaller than the 13 pt it used to be, which is what read as
-                // slightly off next to the HUD. Fitted at 2x, where a point is
-                // two pixels: the same label drawn at 13, 12.5 and 12 next to
-                // the HUD's own, matched to it by sliding one profile over the
-                // other, puts the HUD at 12.33, 12.22 and 12.18, and its
-                // ascenders (18.5 px against 19.7, 18.9 and 18.1) agree. The
-                // glyphs below stay at 13.
+                // Fitted at 2x, where a point is two pixels: the same label
+                // drawn at 13, 12.5 and 12 next to the HUD's own, matched to it
+                // by sliding one profile over the other, puts the HUD at 12.33,
+                // 12.22 and 12.18, and its ascenders (18.5 px against 19.7,
+                // 18.9 and 18.1) agree. 13 pt reads slightly wide beside it.
+                // The glyphs below stay at 13.
                 .font(.system(size: 12.25))
                 // Explicit white, not .primary: the label colour is white at
                 // 85 percent, which reads thinner and duller than the HUD's
@@ -87,7 +86,7 @@ struct OSDBannerView: View {
         // of 91) and the knob has no glass. Only a key window draws the real
         // one, and nothing else reaches it: the tint, trackFillColor, the
         // controlActiveState environment value, an overridden isKeyWindow and
-        // a posted key notification were all measured and all changed nothing.
+        // a posted key notification all leave the inactive drawing in place.
         // The panel takes key while the pointer is on it (see setHovering) and
         // it cannot hold key the rest of the time, since that would take the
         // keyboard away from whatever is in front on every key press.

@@ -280,7 +280,7 @@ final class MirroredModeService: ObservableObject {
         // (the probe's recipe). Backing-only declarations look sufficient,
         // WindowServer mints enumerable looks-like twins for them, but those
         // twins refuse to apply: CGConfigureDisplayWithDisplayMode fails on
-        // every attempt (found live on a 5K2K panel, 2026-08-25). Only the
+        // every attempt (found on a 5K2K panel). Only the
         // declared pair yields a twin that can actually become current.
         var modes: [CGVirtualDisplayMode] = []
         for stop in stops where stop.width >= 1 && stop.height >= 1 {

@@ -61,8 +61,8 @@ enum BrightnessBoostMath {
     /// EDR factor: 4.0 = two exposure stops at slider max) and converted to the
     /// table's encoded domain below. The table applies BEFORE the panel's
     /// transfer function, so an encoded scale k multiplies mid-tone luminance
-    /// by roughly k^2.2: a table top chosen directly (first attempt: 2.5,
-    /// ~7.5x luminance; BetterDisplay's observed 2.87, ~10x) blasts mid-tones
+    /// by roughly k^2.2: a table top chosen directly (2.5 is ~7.5x luminance,
+    /// BetterDisplay's observed 2.87 is ~10x) blasts mid-tones
     /// far past what the panel's fullscreen limit lets whites do, which is
     /// what reads as washed out.
     static let externalBoostCeilingLuminance = 4.0

@@ -82,8 +82,8 @@ struct ShortcutRecorderRow: View {
         // Only one recording at a time: the form row and the Settings row can both
         // be on screen, so whichever other row is mid-recording must stop first.
         // Tagged with our identity because SwiftUI may deliver this back to us
-        // only after this function returns (observed live 2026-08-18, unlike a
-        // bare NSHostingView, where delivery is inline); without the tag the
+        // only after this function returns (unlike a bare NSHostingView, where
+        // delivery is inline); without the tag the
         // deferred self-delivery stopped the recording it just started.
         NotificationCenter.default.post(name: .crispStopShortcutRecording, object: rowID)
         isRecording = true

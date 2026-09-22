@@ -2,7 +2,7 @@ import Foundation
 
 /// Pure refresh-rate label formatter, extracted from `DisplayMode.refreshRateString`
 /// for headless XCTest (the rest of `DisplayMode` reaches private CGS APIs through the
-/// bridging header, which the test target does not carry — see `project.yml`). Mirrors
+/// bridging header, which the test target does not carry, see `project.yml`). Mirrors
 /// what System Settings shows:
 ///   - a zero ("display default") rate renders as `60Hz`, honouring the
 ///     `DisplayMode.refreshRate` contract ("0 means display default, shown as 60");

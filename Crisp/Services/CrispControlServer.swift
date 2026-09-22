@@ -92,8 +92,8 @@ final class CrispControlServer {
     /// Connection changes run one at a time. Each connection is served in its own
     /// task and disconnect() checks the last-screen guard before it awaits the
     /// transaction, so two disconnects fired together for the last two displays
-    /// both passed the guard and every screen went dark (measured on two sockets
-    /// on 2026-09-02: both reported success, 387 and 1155 ms). Brightness and HDR
+    /// both passed the guard and every screen went dark (measured on two sockets:
+    /// both reported success, 387 and 1155 ms). Brightness and HDR
     /// stay concurrent, since a reconnect can hold the line for seconds.
     private var connectionChain: Task<Void, Never>?
 
