@@ -33,6 +33,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var repositionWorkItem: DispatchWorkItem?
     private var clickMonitor: Any?
     private var clickInterceptor: Any?
+    private var statusItemCatcher: StatusItemCatcher?
     // Temporary probe: logs where every in-panel mouse-down lands in the view
     // tree, to corner the dead-click zones. Remove with the other probes.
     // The NSMenu currently tracking (a SwiftUI Menu / context menu), captured so an
@@ -355,7 +356,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - Status item + panel
 
     private func setupStatusItem() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        // macOS 27 sizes a menu bar item around its image, and its lit pill
+        // follows that width. A square item is 11 pt narrower than a native one
+        // carrying the same symbol, which a fixed length cannot follow.
+        let length = SystemLook.isMacOS27OrLater ? NSStatusItem.variableLength : NSStatusItem.squareLength
+        let item = NSStatusBar.system.statusItem(withLength: length)
         // Not "display": that's the native Displays module icon, two identical
         // icons in the menu bar is confusing. Screen-with-sparkles keeps the vibe.
         let icon = NSImage(systemSymbolName: "sparkles.tv", accessibilityDescription: "Crisp")
@@ -384,12 +389,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             return nil
         }
         statusItem = item
+        // The pill is 2 pt wider than the item on each side and the item's
+        // window clips, so the window is widened before anything is drawn in
+        // it, and on macOS 27 a catcher goes over it so the system draws no
+        // pill of its own on a press. The button has no width until it has
+        // laid out its image.
+        DispatchQueue.main.async { [weak self, weak item] in
+            StatusItemHighlight.makeRoom(for: item?.button)
+            self?.statusItemCatcher = StatusItemCatcher.over(item?.button) { [weak self] in self?.togglePanel() }
+        }
         if #available(macOS 26.0, *) {
             OSDBannerService.shared.statusItem = item
             OSDBannerService.shared.setHighlight = { [weak self] lit in
                 guard let self else { return }
                 self.bannerLightsStatusItem = lit
-                self.statusItem?.button?.highlight(lit || self.isPanelShown)
+                self.refreshStatusItemLight()
             }
             // The banner's own track, dragged with the pointer, goes to the
             // same services the keys use.
@@ -842,14 +856,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             .store(in: &canvasCancellables)
     }
 
-    /// True while the pointer sits over Crisp's own status item, the button the
-    /// click interceptor in `setupStatusItem` watches. Presses there are that
-    /// interceptor's to toggle, so the panel's auto-dismiss paths (resign-key,
-    /// outside click) treat them as neither a dismissal nor a click-away.
+    /// True while the pointer sits over Crisp's own status item. Presses there
+    /// are the click interceptor's to toggle, so the panel's auto-dismiss paths
+    /// (resign-key, outside click) treat them as neither a dismissal nor a
+    /// click-away.
     private var isPointerOverStatusItem: Bool {
-        guard let button = statusItem?.button, let window = button.window else { return false }
-        return window.convertToScreen(button.convert(button.bounds, to: nil))
-            .contains(NSEvent.mouseLocation)
+        StatusItemHighlight.isPointerOver(statusItem?.button)
+    }
+
+    /// Lights the menu bar item while the panel or the banner is up.
+    private func refreshStatusItemLight() {
+        StatusItemHighlight.apply(isPanelShown || bannerLightsStatusItem,
+                                  to: statusItem?.button)
     }
 
     @objc private func togglePanel() {
@@ -883,6 +901,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         var screen = btnScreen
         var anchorMidX = btnFrame.midX
         var topY = btnFrame.minY - 1
+        // macOS 27's status item window reaches three points past the menu bar
+        // it sits in, so its bottom edge is no longer where a menu hangs from:
+        // measured against the Display menu on the same screen, the system's
+        // top row sits one pixel under the bar's bottom row. The bar's own
+        // bottom edge is the anchor, and only when there is a bar: with it
+        // hidden, visibleFrame runs to the top of the screen and the item
+        // window is the only anchor left.
+        if SystemLook.isMacOS27OrLater, let screen = btnScreen,
+           screen.frame.maxY - screen.visibleFrame.maxY > 1 {
+            topY = screen.visibleFrame.maxY - 1
+        }
         // After a reconnect storm, prefer the display the panel was opened on if
         // it's online again. The menu bar mirrors across displays, so mirror the
         // status item's offset from the right edge onto the origin screen.
@@ -963,11 +992,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // The panel carries brightness and volume on its own sliders, so the
         // OSD stays away while it is open.
         BrightnessHUDService.shared.suppressed = true
-        // Native items keep the menu bar button highlighted while their panel
-        // is open. Safe to set synchronously: the click never starts the
-        // button's own tracking (the interceptor swallowed it), so nothing
-        // resets this behind our back.
-        statusItem?.button?.highlight(true)
+        // Native items keep the menu bar button lit while their panel is open.
+        refreshStatusItemLight()
 
         // Re-sync views that mirror live external state (e.g. the system auto-brightness
         // toggle) on every open; the panel content mounts once, so their .onAppear
@@ -1039,8 +1065,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let p = panel, isPanelShown else { return }
         isPanelShown = false
         BrightnessHUDService.shared.suppressed = false
-        // Not plain false: the banner may be up, and it holds the same light.
-        statusItem?.button?.highlight(bannerLightsStatusItem)
+        // The banner may be up, and it holds the same light.
+        refreshStatusItemLight()
         canvas.parkSpring()
         externalStatePollTask?.cancel()
         externalStatePollTask = nil
@@ -1098,9 +1124,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         p.onCancel = { [weak self] in self?.closePanel() }
         return p
     }
+}
 
-    // MARK: - NSWindowDelegate
+// MARK: - NSWindowDelegate
 
+extension AppDelegate {
     func windowDidResignKey(_ notification: Notification) {
         if (notification.object as? MenuPanel) === panel {
             // Don't dismiss while our own admin auth dialog is up: it steals key

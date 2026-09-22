@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import CoreImage
 
 /// Draws Crisp's own on-screen display on macOS 26, in the style of the
 /// system's brightness and volume capsule under the menu bar. OSDUIHelper,
@@ -29,7 +30,10 @@ final class OSDBannerService {
     /// settles down from above over the first half second, and a frame caught
     /// during that settle reads 2 pt narrower, 1 pt shorter and rounder than
     /// the capsule the eye actually sees.
-    static let trailingInset: CGFloat = 10
+    /// How far the capsule stays from the side edge: the system's HUD on
+    /// macOS 27 sits 17 pt in, measured on the same screen with both capsules
+    /// up. Older releases keep the 10 the bezel was measured at.
+    static var trailingInset: CGFloat { drawsMacOS27Capsule ? 17 : 10 }
     static let topInset: CGFloat = 10
     static let cornerRadius: CGFloat = 20
     /// The capsule's tone, as one grey over the backdrop. The system HUD reads
@@ -39,13 +43,19 @@ final class OSDBannerService {
     /// light backdrop the banner lands on 31, 129 and 184, the HUD's own
     /// three. The same line is applied inside the backdrop's own filters (see
     /// makeToneFilters); this layer is what draws it if that layer is missing.
-    static let scrimColor = NSColor(white: 0.355, alpha: 0.343)
+    /// macOS 27 draws a slightly lighter capsule: measured settled over
+    /// backdrops of 0 to 255 its body follows 0.675 x backdrop + 32, where
+    /// 26.5.1 followed 0.657 x backdrop + 31.
+    static var scrimColor: NSColor {
+        drawsMacOS27Capsule ? NSColor(white: 0.386, alpha: 0.325)
+                            : NSColor(white: 0.355, alpha: 0.343)
+    }
     /// What the capsule does to the colour behind it, which the grey alone
     /// cannot do. A grey at alpha 0.343 keeps 0.657 of the backdrop's colour
     /// away from grey; the HUD keeps 1.26 of it, so a coloured window behind
     /// the banner stayed noticeably duller than behind the HUD. Measured on
     /// four saturated backdrops the HUD lands on the same brightness line as
-    /// ours to a tenth of a level and multiplies what is left of the colour by
+    /// this one to a tenth of a level and multiplies what is left of the colour by
     /// 1.26 every time, so the sample is saturated by 1.26 / 0.657 after the
     /// grey. Over a strong green the HUD reads 17, 168, 55 and so does this.
     static let backdropSaturation = 1.26 / (1 - 0.343)
@@ -85,18 +95,17 @@ final class OSDBannerService {
     /// blurs the smaller sample.
     ///
     /// The measure is the energy in each scale band inside the capsule, over
-    /// the same page of text behind both. Two earlier versions of it were
-    /// wrong and both flattered this. A sparse page let the bare strips the
-    /// measure reads fall between lines, so the HUD's own number moved 16
-    /// percent run to run; the page is dense now and both sides repeat to the
-    /// decimal. And a cumulative measure, the energy above each scale, piles
-    /// every finer band into each number, so all five came out in the same
-    /// ratio and said nothing. Band k is boxmean(k) - boxmean(2k).
+    /// the same page of text behind both. Band k is boxmean(k) - boxmean(2k):
+    /// a cumulative measure, the energy above each scale, piles every finer
+    /// band into each number, so all five come out in the same ratio and say
+    /// nothing. The page has to be dense, since a sparse one lets the bare
+    /// strips the measure reads fall between lines and the HUD's own number
+    /// moves 16 percent run to run.
     ///
     /// Across 1-2, 2-4, 4-8, 8-16 and 16-32 pixels the HUD reads 2.56, 2.65,
     /// 3.21, 3.37 and 3.25: nearly flat. A gaussian is not flat, so no single
-    /// radius holds both ends. 2.0, which this shipped on the old measure, is
-    /// three and a half times too soft at 1-2 pixels. 1.0 lands the two fine
+    /// radius holds both ends. 2.0 is three and a half times too soft at 1-2
+    /// pixels. 1.0 lands the two fine
     /// bands (2.33 and 2.71) and runs about half again too sharp at the coarse
     /// ones, and it is the best of the sweep by a wide margin.
     ///
@@ -107,15 +116,56 @@ final class OSDBannerService {
     /// (inputBlurRadius with inputBlurOpacity0...4 and inputBlurDistance0...4)
     /// changes nothing at any radius, with or without distances and with or
     /// without the face; the layer's opacity does not mix a sharp share in
-    /// either, since at 0.90 the profile is identical to 1.0, which corrects
-    /// what an earlier round recorded here; and stacking two backdrop layers
+    /// either, since at 0.90 the profile is identical to 1.0; and stacking two
+    /// backdrop layers
     /// does not mix, because the upper one samples what is already composited
     /// below it.
     ///
     /// The radius is not a smooth dial. It is quantised somewhere inside the
     /// filter: 0.6 measures as unblurred, and 0.8 is far sharper than 1.0.
+    /// macOS 27 softens the backdrop far more than 26 did. Measured as the
+    /// share of a bar pattern that survives behind the capsule, 8 pt from
+    /// crest to crest: the system draws 0.29 there and 1.0 drew 0.57. The dial
+    /// is still not smooth, 1.1 through 1.8 all land between 0.37 and 0.41,
+    /// and 2.0 is the first value that meets it at 0.27.
     static let backdropScale = 0.5
-    static let backdropBlurRadius = 1.0
+    static var backdropBlurRadius: Double { drawsMacOS27Capsule ? 2.0 : 1.0 }
+    /// The system capsule was redrawn on macOS 27: it softens its backdrop
+    /// more, and its rim follows the edge direction instead of running white
+    /// all the way round. Everything fitted on 26.5.1 stays for macOS 26,
+    /// which is what this tells apart.
+    static let drawsMacOS27Capsule = SystemLook.isMacOS27OrLater
+    /// One point, as on 26.
+    static let rimWidth: CGFloat = 1.15
+    static let rimInset: CGFloat = 0
+    /// The rim colour, added on rather than blended over, and the same line
+    /// along the top and the bottom edge. Over a flat backdrop the system's
+    /// two edges read alike: over 29 its top row is 136 and its bottom 134
+    /// with the body at 57, and over 199 both clip at 255 with the body at
+    /// 172. A white blended over cannot draw that pair, since the 0.40 that
+    /// lands on 136 over the dark backdrop draws 205 over the light one. An
+    /// added line holds the same 79 levels on both.
+    ///
+    /// Over a busy backdrop the system's top row does run brighter than its
+    /// bottom (125 levels over the body against 80), but that is the glass
+    /// pulling the backdrop behind it into the edge, so it follows what is
+    /// behind rather than the edge itself.
+    ///
+    /// Nothing is drawn down the two rounded ends. The system's ends do run
+    /// dark, about 65 levels under the body, but that is the glass view's own
+    /// edge, which this one draws too: the two land on 57 and 118 against the
+    /// system's 52 and 116. A dark layer on top of it reaches a second pixel
+    /// inwards (63 against the system's 116 over a mid grey), which is a
+    /// border the system's capsule does not have.
+    static let rimEdgeColor = NSColor(white: 1, alpha: 0.27)
+    /// The glow just inside the top and the bottom edge: about 25 levels at
+    /// the first row under the rim, gone by the sixth.
+    static let rimGlowColor = NSColor(white: 1, alpha: 0.15)
+    static let rimGlowShare = 0.10
+    /// Where the edge gradient reaches its own colour, as a share of the
+    /// width: the system is at its full edge value 40 pt in from a corner
+    /// (0.14 of 288).
+    static let rimEdgeShare = 0.06
     /// How far the edge bends its backdrop, and over how many points. Both are
     /// fitted against the HUD's own bend, measured as displacement rather than
     /// by eye: a stripe backdrop of one period behind both capsules, and the
@@ -156,15 +206,24 @@ final class OSDBannerService {
     /// reads as the banner arriving sharp. Every curve was fitted against the
     /// native capsule on the same backdrop, so change them by measuring, not
     /// by taste.
-    static let visibleDuration: TimeInterval = 1.0
-    static let fadeInDuration: TimeInterval = 0.55
+    /// macOS 27 takes its time over the same three stages. Measured frame by
+    /// frame at 60 fps over the same backdrop, with one press and nothing else
+    /// moving on screen: the system capsule holds its tone 530 ms after it
+    /// first shows where this one held at 310, and it is off screen 1233 ms
+    /// after it arrives where this one had gone at 1016.
+    static var visibleDuration: TimeInterval { drawsMacOS27Capsule ? 0.98 : 1.0 }
+    static var fadeInDuration: TimeInterval { drawsMacOS27Capsule ? 0.68 : 0.55 }
     static let fadeInCurve = CAMediaTimingFunction(controlPoints: 0.4, 0.05, 0.2, 0.9)
-    static let growDuration: TimeInterval = 0.35
+    static var growDuration: TimeInterval { drawsMacOS27Capsule ? glassGrowInDuration : 0.35 }
     static let fadeOutDuration: TimeInterval = 0.54
     static let fadeOutCurve = CAMediaTimingFunction(controlPoints: 0.2, 0.65, 0.35, 1)
     static let exitShrinkDuration: TimeInterval = 0.45
     static let exitShrinkCurve = CAMediaTimingFunction(controlPoints: 0.2, 0.4, 0.3, 1)
-    static let entryInset = CGSize(width: 11, height: 2)
+    /// How much smaller the capsule opens. macOS 27 opens from further in:
+    /// the system capsule is invisible for its first 137 ms and comes into
+    /// view at 266 pt wide, 28 under its settled 294, and takes until 520 ms
+    /// to close that.
+    static var entryInset: CGSize { drawsMacOS27Capsule ? CGSize(width: 38, height: 8) : CGSize(width: 11, height: 2) }
     static let exitInset = CGSize(width: 14, height: 3)
     static let hiddenLift: CGFloat = 5.5
 
@@ -257,7 +316,7 @@ final class OSDBannerService {
     /// states). An accessory app's window can, though: the Cua Driver desktop
     /// tool keeps an empty overlay over a whole display while it runs, and
     /// without the owner check the banner centred on the midline, 708 pt from
-    /// its item (measured 2026-09-07).
+    /// its item.
     ///
     /// The answer is held briefly per display. This runs on every key press,
     /// and the window list is a round trip to the window server: usually about
@@ -326,7 +385,7 @@ final class OSDBannerService {
 
     /// Called by a panel when the pointer arrives or leaves, so the menu bar
     /// item follows the banner it belongs to.
-    fileprivate func hoverChanged(_ hovering: Bool) {
+    func hoverChanged(_ hovering: Bool) {
         if hovering {
             unlightWork?.cancel()
             setHighlight?(true)
@@ -338,7 +397,7 @@ final class OSDBannerService {
     /// The close badge took the banner away, so the light goes with it instead
     /// of sitting on for the rest of the hold. Another screen's banner may
     /// still be up, and it keeps the light.
-    fileprivate func dismissed(_ panel: OSDBannerPanel) {
+    func dismissed(_ panel: OSDBannerPanel) {
         guard !panels.values.contains(where: { $0 !== panel && $0.alphaValue > 0 && !$0.exiting })
         else { return }
         unlightWork?.cancel()
@@ -368,6 +427,18 @@ final class OSDBannerService {
         guard let tone = makeToneFilters() else { return nil }
         let blur = reduceTransparency ? reducedBlurRadius : backdropBlurRadius
         return makeBackdrop(frame: frame, blur: blur, tone: tone, refract: true)
+    }
+
+    /// macOS 27's glass, see glassVariant. Nil where the variant is not
+    /// there to ask for, which keeps the hand-made capsule.
+    private static func makeGlassView(frame: NSRect) -> NSGlassEffectView? {
+        guard NSGlassEffectView.instancesRespond(to: NSSelectorFromString("set_variant:")) else { return nil }
+        let glass = NSGlassEffectView(frame: frame)
+        glass.cornerRadius = cornerRadius
+        glass.setValue(glassVariant, forKey: "_variant")
+        glass.appearance = NSAppearance(named: .darkAqua)
+        glass.autoresizingMask = [.width, .height]
+        return glass
     }
 
     private static func makeBackdrop(frame: NSRect, blur: CGFloat,
@@ -632,7 +703,11 @@ final class OSDBannerService {
         clip.layer?.cornerCurve = .continuous
         clip.layer?.masksToBounds = true
         clip.autoresizingMask = [.width, .height]
-        if let backdrop = Self.makeBackdrop(frame: clip.bounds) {
+        let glassView = Self.drawsMacOS27Capsule && !Self.reduceTransparency
+            ? Self.makeGlassView(frame: clip.frame) : nil
+        if glassView != nil {
+            // The system glass is the whole capsule, see glassVariant.
+        } else if let backdrop = Self.makeBackdrop(frame: clip.bounds) {
             clip.layer?.addSublayer(backdrop)
             p.backdrop = backdrop
         } else {
@@ -642,7 +717,7 @@ final class OSDBannerService {
                                                               : Self.scrimColor).cgColor
             clip.layer?.addSublayer(scrim)
         }
-        root.addSubview(clip)
+        root.addSubview(glassView ?? clip)
 
         let hosting = NSHostingView(rootView: OSDBannerView(model: p.model))
         // Every colour in the banner is explicit, so the appearance only
@@ -702,19 +777,150 @@ final class OSDBannerService {
         // lifts the capsule 74 levels over a black backdrop, 47 over a mid
         // grey and 28 over a light one, which is white blended over, not
         // added: a flat alpha fits all three.
-        let bevel = NSView(frame: Self.capsuleRect(in: root))
-        bevel.wantsLayer = true
-        bevel.layer?.cornerRadius = Self.cornerRadius
-        bevel.layer?.cornerCurve = .continuous
-        bevel.layer?.borderWidth = 1
-        bevel.layer?.borderColor = NSColor.white.withAlphaComponent(0.36).cgColor
+        //
+        // macOS 27 redrew that rim: it is bright along the straight top and
+        // bottom and dark down the two rounded ends, so OSDBevelView draws it
+        // instead there. The flat white below is the one fitted on 26.5.1 and
+        // stays for macOS 26.
+        let bevel: NSView
+        if Self.drawsMacOS27Capsule {
+            bevel = OSDBevelView(frame: Self.capsuleRect(in: root))
+        } else {
+            bevel = NSView(frame: Self.capsuleRect(in: root))
+            bevel.wantsLayer = true
+            bevel.layer?.cornerRadius = Self.cornerRadius
+            bevel.layer?.cornerCurve = .continuous
+            bevel.layer?.borderWidth = 1
+            bevel.layer?.borderColor = NSColor.white.withAlphaComponent(0.36).cgColor
+        }
         bevel.autoresizingMask = [.width, .height]
         // Under the content and the hover view: a plain NSView takes every
         // click inside its bounds, and this one covers the whole capsule.
         root.addSubview(bevel, positioned: .below, relativeTo: hosting)
 
+        // The rim is not faded in with the content: the system's is there from
+        // the first frame. On the way out it goes with the glass.
+        if let glassView, let content = hosting.layer,
+           let rim = (bevel as? OSDBevelView)?.rings ?? bevel.layer {
+            content.opacity = 0
+            glassView.alphaValue = 0
+            p.glass = OSDGlass(view: glassView, faded: [content], rim: rim, bevel: bevel)
+        }
+
         p.contentView = root
         return p
+    }
+}
+
+/// The system glass view, tuned to the HUD (see OSDBannerService.glassInputs),
+/// and the layers that fade with it. The panel ramps three of the inputs
+/// (the blur, the bend and the tint), see OSDBannerPanel.showGlass.
+@available(macOS 26.0, *)
+@MainActor
+struct OSDGlass {
+    let view: NSGlassEffectView
+    let faded: [CALayer]
+    /// The rim's rings, which the entry ramps. Not the whole bevel view: its
+    /// glow stays up, see OSDBevelView.rings.
+    let rim: CALayer
+    let bevel: NSView
+
+    /// The layer that carries the view's glass filter, set up so that every
+    /// filter it is given is tuned. The view writes a new filter at each size
+    /// change (its blur follows its size, 5.7 at 260 pt wide to 6.1 at 288),
+    /// from SwiftUI's render pass, after any layout hook: a tuning put back
+    /// from outside lost to it on every other frame of the entry's grow and
+    /// the exit's shrink, and the glass flashed. So the layer tunes the filter
+    /// as it is set. Nil if the view has no such filter, and the banner then
+    /// shows the view as it draws itself.
+    func tunedBackdrop() -> CALayer? {
+        view.layoutSubtreeIfNeeded()
+        guard let layer = Self.backdrop(in: view.layer),
+              let tunedClass = Self.tunedClass(for: type(of: layer)) else { return nil }
+        if layer.value(forKey: Self.targetsKey) == nil {
+            layer.setValue([
+                "inputBlurRadius": OSDBannerService.glassBlur.closed,
+                "inputInnerRefractionAmount": OSDBannerService.glassBend.closed,
+                "inputFaceOpacity": OSDBannerService.glassTint.closed,
+                "inputInnerRefractionHeight": OSDBannerService.glassRefractionHeight.closed,
+                "inputKeyFillHighlightAmount": OSDBannerService.glassHighlight.closed,
+                "backdropScale": OSDBannerService.glassBackdropScale
+            ], forKey: Self.targetsKey)
+        }
+        if !layer.isKind(of: tunedClass) { object_setClass(layer, tunedClass) }
+        layer.filters = layer.filters
+        return layer
+    }
+
+    /// Takes each input from where it is to its value on its own curve. The
+    /// window server does not run a Core Animation animation on this view's
+    /// filter (it drew the settled glass from the first frame), so the inputs
+    /// are stepped here and the filter set again on each step.
+    func ramp(_ layer: CALayer, _ legs: [OSDGlassRamp.Leg]) {
+        Self.ramps[ObjectIdentifier(layer)]?.stop()
+        let ramp = OSDGlassRamp(layer: layer, legs: legs,
+                                from: layer.value(forKey: Self.targetsKey) as? [String: Double] ?? [:])
+        Self.ramps[ObjectIdentifier(layer)] = ramp
+        ramp.start()
+    }
+
+    private static var ramps: [ObjectIdentifier: OSDGlassRamp] = [:]
+
+    static let filterName = "glassBackground"
+    /// Where the three ramped inputs are headed, kept on the layer. The ramps
+    /// draw the way there; this is what a filter set in the meantime starts at.
+    fileprivate nonisolated static let targetsKey = "crispGlassTargets"
+
+    /// A subclass of the backdrop's class whose setFilters: passes on a tuned
+    /// copy of the glass filter. The filter is copied and not changed in
+    /// place, because a change in place never reaches the window server.
+    private static func tunedClass(for base: AnyClass) -> AnyClass? {
+        let name = "CrispTuned" + NSStringFromClass(base)
+        if let existing = NSClassFromString(name) { return existing }
+        if NSStringFromClass(base).hasPrefix("CrispTuned") { return base }
+        guard let tuned = objc_allocateClassPair(base, name, 0) else { return nil }
+        let selector = NSSelectorFromString("setFilters:")
+        typealias SetFilters = @convention(c) (AnyObject, Selector, NSArray?) -> Void
+        let inherited = unsafeBitCast(class_getMethodImplementation(base, selector), to: SetFilters.self)
+        let setFilters: @convention(block) (CALayer, NSArray?) -> Void = { layer, filters in
+            let targets = layer.value(forKey: targetsKey) as? [String: Double] ?? [:]
+            let scale = targets["backdropScale"] ?? OSDBannerService.glassBackdropScale
+            if layer.value(forKey: "scale") as? Double != scale {
+                layer.setValue(scale, forKey: "scale")
+            }
+            inherited(layer, selector, tunedFilters(filters, targets: targets))
+        }
+        class_addMethod(tuned, selector, imp_implementationWithBlock(setFilters), "v@:@")
+        objc_registerClassPair(tuned)
+        return tuned
+    }
+
+    private nonisolated static func tunedFilters(_ filters: NSArray?, targets: [String: Double]) -> NSArray? {
+        guard let filters = filters as? [NSObject],
+              let filterClass = NSClassFromString("CAFilter") as? NSObject.Type else { return filters as NSArray? }
+        return filters.map { filter -> NSObject in
+            guard filter.value(forKey: "name") as? String == "glassBackground",
+                  let copy = filterClass.perform(NSSelectorFromString("filterWithName:"), with: "glassBackground")?
+                    .takeUnretainedValue() as? NSObject,
+                  let keys = filter.perform(NSSelectorFromString("inputKeys"))?.takeUnretainedValue() as? [String]
+            else { return filter }
+            for key in keys { copy.setValue(filter.value(forKey: key), forKey: key) }
+            copy.setValue("glassBackground", forKey: "name")
+            for (key, value) in OSDBannerService.glassInputs { copy.setValue(value, forKey: key) }
+            for (key, value) in targets where key.hasPrefix("input") { copy.setValue(value, forKey: key) }
+            return copy
+        } as NSArray
+    }
+
+    private static func backdrop(in layer: CALayer?) -> CALayer? {
+        guard let layer else { return nil }
+        if (layer.filters as? [NSObject])?.contains(where: { $0.value(forKey: "name") as? String == filterName }) == true {
+            return layer
+        }
+        for sublayer in layer.sublayers ?? [] {
+            if let found = backdrop(in: sublayer) { return found }
+        }
+        return nil
     }
 }
 
@@ -838,9 +1044,9 @@ final class OSDBadgeView: NSView {
     /// way the system's shadow is a black at 0.079 one point outside the disc,
     /// 0.044 five points out, 0.024 eleven out and 0.007 twenty-two out, which
     /// is the same profile over two backdrops. Read it there and not by eye:
-    /// what made an earlier one read as a drawn circle was the near end and not
-    /// the reach, and what made this one read too wide was a tail a third to a
-    /// half too strong from eleven points out. A blur instead of a gradient
+    /// the near end is what reads as a drawn circle, not the reach, and a tail
+    /// a third to a half too strong from eleven points out is what reads too
+    /// wide. A blur instead of a gradient
     /// does not do it either, since the tail is far longer than any blur's.
     ///
     /// The dark appearance carries its own, weaker profile, which the same
@@ -885,8 +1091,8 @@ final class OSDBadgeView: NSView {
     /// covers 29 pixels at 1x and its ink adds up to about 1900 levels below
     /// the disc, where 9 point bold covers 29 at 1975 and every lighter weight
     /// leaves the X too thin (8.5 regular covers 19 at 1003). Half a point over
-    /// the 9 the ink fit asked for, which is where Didrik wanted it. Its colour
-    /// follows the appearance, see applyAppearance.
+    /// the 9 the ink fit asked for. Its colour follows the appearance, see
+    /// applyAppearance.
     func addGlyph() {
         let config = NSImage.SymbolConfiguration(pointSize: 9.5, weight: .bold)
         guard let image = NSImage(systemSymbolName: "xmark", accessibilityDescription: nil)?
@@ -940,262 +1146,76 @@ final class OSDBadgeView: NSView {
     override func mouseDown(with event: NSEvent) { onClick?() }
 }
 
-/// One banner window. Holds its model and the hide timer; OSDBannerService
-/// owns placement and content.
+/// Steps the glass filter's ramped inputs, see OSDGlass.ramp.
 @available(macOS 26.0, *)
 @MainActor
-final class OSDBannerPanel: NSPanel {
-    /// Only ever while the pointer is on the capsule, see setHovering.
-    override var canBecomeKey: Bool { true }
+final class OSDGlassRamp: NSObject {
+    struct Leg {
+        let key: String
+        let to: Double
+        let duration: TimeInterval
+        let curve: CAMediaTimingFunction
+        let delay: TimeInterval
 
-    let model = OSDBannerModel()
-    /// The capsule's backdrop layer, or nil when the private class was
-    /// missing and the banner fell back to the flat grey. See keepAlive.
-    var backdrop: CALayer?
-    /// The close badge and the layer it samples the desktop with.
-    var badge: OSDBadgeView?
-    var badgeBackdrop: CALayer?
-    private var hideWork: DispatchWorkItem?
-    /// Whether Crisp was the front app when the pointer arrived on the capsule.
-    private var crispWasActive = false
-    private var keepAliveWork: DispatchWorkItem?
-    /// Where the banner sits when it is up. Kept so a pointer arriving during
-    /// the exit can bring it back to the frame it was leaving.
-    private var restFrame: NSRect = .zero
-    /// When the running entry ends. `alphaValue` reads the interpolated value
-    /// during a window animation, so a second press inside the entry would
-    /// otherwise restart it from the shrunk frame.
-    private var entryEnds = Date.distantPast
-    /// Whether an exit has run since the last reveal. A press lands inside one
-    /// often, one hold after the press before it. Nothing clears this when the
-    /// exit ends on its own: by then stopping it is a pair of no-ops.
-    fileprivate var exiting = false
-
-    /// Places the banner at `frame` and brings it to full opacity, restarting
-    /// the hide timer. A hidden or fading banner plays the system HUD's entry;
-    /// a visible one only moves, so key repeat animates nothing.
-    func reveal(at frame: NSRect) {
-        hideWork?.cancel()
-        keepAliveWork?.cancel()
-        startKeepAlive()
-        restFrame = frame
-        // A banner on screen is a control: the pointer gets a knob on the
-        // track and a close badge, as the system HUD does. It takes clicks
-        // only while the pointer is on the capsule, see setHovering.
-        ignoresMouseEvents = !model.hovering
-        if exiting {
-            // A second animation on a property does not replace the one in
-            // flight: both drive the window, and the exit wins, so the banner
-            // blinks out and comes back. Stop it where it is and go up from
-            // there. Its own alphaValue is still 1 for the first frames, which
-            // is why the flag says this and not the value.
-            stopAnimations()
-            exiting = false
-            // The exit left the window part way down and part way in. The
-            // entry window from the press before it is meaningless now, and
-            // leaving it set skips the branch below and strands the banner
-            // dim at the shrunk frame for the whole hold.
-            entryEnds = .distantPast
+        init(_ key: String, _ to: Double, _ duration: TimeInterval, _ curve: CAMediaTimingFunction,
+             delay: TimeInterval = 0) {
+            (self.key, self.to, self.duration, self.curve, self.delay) = (key, to, duration, curve, delay)
         }
-        if Date() < entryEnds {
-            // The grow in flight lands on the frame it started for. That is
-            // the same frame on a key repeat, but not if the menu bar item
-            // moved or the screen changed between two presses, and nothing
-            // later corrects a settled banner, so re-aim it here.
-            if frame != self.frame { setFrame(frame, display: false, animate: true) }
-        } else if alphaValue < 1 {
-            entryEnds = Date().addingTimeInterval(OSDBannerService.fadeInDuration)
-            // Only from hidden: caught mid-exit the banner is on screen, and
-            // dropping it back to the entry frame is a jump the eye sees.
-            if alphaValue == 0 {
-                setFrame(Self.hidden(frame, inset: OSDBannerService.entryInset), display: false)
+    }
+
+    private let layer: CALayer
+    private let legs: [Leg]
+    private let from: [String: Double]
+    private let begin = CACurrentMediaTime()
+    private var timer: Timer?
+
+    init(layer: CALayer, legs: [Leg], from: [String: Double]) {
+        (self.layer, self.legs, self.from) = (layer, legs, from)
+    }
+
+    func start() {
+        let timer = Timer(timeInterval: 1.0 / 120, target: self, selector: #selector(step),
+                          userInfo: nil, repeats: true)
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+        step()
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    @objc private func step() {
+        let elapsed = CACurrentMediaTime() - begin
+        var values = layer.value(forKey: OSDGlass.targetsKey) as? [String: Double] ?? [:]
+        var prior = from
+        var seen = Set<String>()
+        for leg in legs {
+            let start = prior[leg.key] ?? leg.to
+            if elapsed >= leg.delay || !seen.contains(leg.key) {
+                values[leg.key] = start + (leg.to - start)
+                    * leg.curve.solve(min(max(elapsed - leg.delay, 0) / leg.duration, 1))
             }
-            orderFrontRegardless()
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = OSDBannerService.growDuration
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                animator().setFrame(frame, display: true)
-            }
-            NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = OSDBannerService.fadeInDuration
-                ctx.timingFunction = OSDBannerService.fadeInCurve
-                animator().alphaValue = 1
-            }
-        } else {
-            setFrame(frame, display: false)
+            prior[leg.key] = leg.to
+            seen.insert(leg.key)
         }
-        scheduleHide()
-    }
-
-    /// The hold before the banner leaves, restarted by every press and by the
-    /// pointer leaving the capsule.
-    private func scheduleHide() {
-        hideWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, !self.model.hovering else { return }
-            self.fadeOut()
-        }
-        hideWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + OSDBannerService.visibleDuration, execute: work)
-    }
-
-    /// The pointer arriving on the capsule or leaving it. While it is on, the
-    /// banner holds: the system's own stays up as long as the pointer is there
-    /// and starts its hold again when it leaves, measured at 0.2, 0.6, 1.0 and
-    /// 1.45 seconds after the leave. A pointer landing on a banner that is
-    /// already leaving brings it back.
-    func setHovering(_ hovering: Bool) {
-        // A banner that has gone stays gone. Hidden means alpha 0 and the
-        // window is still there, so the pointer crossing the corner it used to
-        // be in still reaches this, and it must not bring it back. Nor does a
-        // banner still fading out under Crisp's own panel take the pointer,
-        // which would take key away from the panel and close it.
-        if hovering && (alphaValue == 0 || BrightnessHUDService.shared.suppressed) { return }
-        guard model.hovering != hovering else { return }
-        model.hovering = hovering
-        // The window is wider than the capsule (see windowMargin), and a
-        // window takes every click inside it whatever its views say: a view
-        // that hands the point back stops the view below it from seeing the
-        // click, not the window below the window. So the banner is only
-        // clickable while the pointer is on the capsule, and the margin, which
-        // covers the menu bar over the banner, never swallows anything. The
-        // tracking area that calls this fires whether the window takes clicks
-        // or not, so the pointer arriving is always seen.
-        ignoresMouseEvents = !hovering
-        // AppKit draws a slider in a window that is not key in its inactive
-        // state: a grey line and a knob with no glass. The panel is key for
-        // exactly as long as the pointer is on the capsule, which is the only
-        // way to the real control (see OSDBannerView.track), and it hands the
-        // keyboard straight back on the way out. It cannot hold key while the
-        // banner is merely up, or every brightness press would take the
-        // keyboard away from whatever is in front.
-        if hovering {
-            // Only give the keyboard back to the app it came from. Crisp is
-            // its own app in front while an update window or the About box is
-            // up, and deactivating on the way out would put that behind
-            // whatever is next.
-            crispWasActive = NSApp.isActive
-            makeKey()
-        } else if isKeyWindow && !crispWasActive {
-            NSApp.deactivate()
-        }
-        OSDBannerService.shared.hoverChanged(hovering)
-        fadeBadge(to: hovering)
-        if hovering {
-            hideWork?.cancel()
-            if exiting || alphaValue < 1 { reveal(at: restFrame) }
-        } else {
-            scheduleHide()
-        }
-    }
-
-    /// The badge fades and only fades, measured on the system HUD over a flat
-    /// backdrop at 75 frames a second: 0.29 seconds in on an ease-out that is
-    /// only a little faster than a straight line, and 0.35 out, which runs
-    /// straight. The knob and the fill are not animated at all.
-    private func fadeBadge(to shown: Bool) {
-        guard let badge else { return }
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = shown ? 0.29 : 0.35
-            ctx.timingFunction = shown
-                ? CAMediaTimingFunction(controlPoints: 0, 0, 0.58, 1)
-                : CAMediaTimingFunction(name: .linear)
-            badge.animator().alphaValue = shown ? 1 : 0
-        }
-    }
-
-    /// The close badge: the banner goes at once, on the same exit.
-    func dismiss() {
-        setHovering(false)
-        hideWork?.cancel()
-        OSDBannerService.shared.dismissed(self)
-        fadeOut()
-    }
-
-    /// Keeps the backdrop sampling while the banner is up. A layer that
-    /// samples what is behind it needs the screen composited, and WindowServer
-    /// stops compositing a screen with nothing changing on it: the sample then
-    /// has nothing in it and the capsule goes dark, and stays dark until
-    /// something on screen moves. EDROverlayManager keeps its own overlay
-    /// alive against the same promotion, by re-presenting at 5 fps.
-    ///
-    /// Holding brightness up at 100 percent is exactly the case that hits it:
-    /// the level never moves, so the banner redraws nothing of its own and the
-    /// screen behind it is still. An animation the eye cannot see (a
-    /// thousandth of the layer's opacity) keeps the layer rendering for as
-    /// long as the banner is visible, and is taken off as it goes.
-    private static let keepAliveKey = "crispBannerKeepAlive"
-
-    private func startKeepAlive() {
-        for layer in [backdrop, badgeBackdrop].compactMap({ $0 })
-        where layer.animation(forKey: Self.keepAliveKey) == nil {
-            let pulse = CABasicAnimation(keyPath: "opacity")
-            pulse.fromValue = 1.0
-            pulse.toValue = 0.999
-            pulse.duration = 0.25
-            pulse.autoreverses = true
-            pulse.repeatCount = .greatestFiniteMagnitude
-            layer.add(pulse, forKey: Self.keepAliveKey)
-        }
-    }
-
-    /// Leaves the window where the animations have it and lets them go.
-    private func stopAnimations() {
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0
-            animator().alphaValue = alphaValue
-            animator().setFrame(frame, display: false)
-        }
-    }
-
-    private func fadeOut() {
-        exiting = true
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = OSDBannerService.fadeOutDuration
-            ctx.timingFunction = OSDBannerService.fadeOutCurve
-            animator().alphaValue = 0
-        }
-        NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = OSDBannerService.exitShrinkDuration
-            ctx.timingFunction = OSDBannerService.exitShrinkCurve
-            animator().setFrame(Self.hidden(frame, inset: OSDBannerService.exitInset), display: true)
-        }
-        let work = DispatchWorkItem { [weak self] in
-            self?.backdrop?.removeAnimation(forKey: Self.keepAliveKey)
-            self?.badgeBackdrop?.removeAnimation(forKey: Self.keepAliveKey)
-            // Hidden means alpha 0, not off screen, so the window is still
-            // there to take a click nobody meant for it.
-            self?.ignoresMouseEvents = true
-            self?.model.hovering = false
-            self?.badge?.alphaValue = 0
-        }
-        keepAliveWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + OSDBannerService.fadeOutDuration, execute: work)
-    }
-
-    /// The hidden frame: `frame` inset and lifted by the native amounts.
-    private static func hidden(_ frame: NSRect, inset: CGSize) -> NSRect {
-        frame.insetBy(dx: inset.width, dy: inset.height).offsetBy(dx: 0, dy: OSDBannerService.hiddenLift)
+        layer.setValue(values, forKey: OSDGlass.targetsKey)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.filters = layer.filters
+        CATransaction.commit()
+        if legs.allSatisfy({ elapsed >= $0.delay + $0.duration }) { stop() }
     }
 }
 
-/// Reads the pointer arriving on the banner and leaving it. SwiftUI's own
-/// onHover tracks in the key window, and this panel never becomes key, so the
-/// tracking area is set to be always active. It takes no clicks: hitTest
-/// returns nil, so the track's drag and the close badge see them instead.
-@available(macOS 26.0, *)
-final class BannerHoverView: NSView {
-    var onHover: ((Bool) -> Void)?
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: bounds,
-                                       options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-                                       owner: self))
+extension CAMediaTimingFunction {
+    /// The curve's output at an input time, 0...1. Nothing public evaluates a
+    /// timing function; this is the method Core Animation itself uses.
+    func solve(_ time: Double) -> Double {
+        let selector = NSSelectorFromString("_solveForInput:")
+        guard responds(to: selector) else { return time }
+        typealias Solve = @convention(c) (AnyObject, Selector, Float) -> Float
+        return Double(unsafeBitCast(method(for: selector), to: Solve.self)(self, selector, Float(time)))
     }
-
-    override func mouseEntered(with event: NSEvent) { onHover?(true) }
-    override func mouseExited(with event: NSEvent) { onHover?(false) }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

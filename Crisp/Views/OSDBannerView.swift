@@ -25,8 +25,8 @@ final class OSDBannerModel: ObservableObject {
 /// tuned against a screenshot of the native capsule on the same screen.
 @available(macOS 26.0, *)
 struct OSDBannerView: View {
-    /// Visible capsule size, measured from the native HUD on 26.5.1 once it
-    /// has settled (see OSDBannerService.cornerRadius).
+    /// Visible capsule size, measured from the native HUD once it has settled
+    /// (see OSDBannerService.cornerRadius).
     static let size = CGSize(width: 292, height: 64)
 
     @ObservedObject var model: OSDBannerModel
@@ -34,13 +34,12 @@ struct OSDBannerView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(model.title)
-                // Smaller than the 13 pt it used to be, which is what read as
-                // slightly off next to the HUD. Fitted at 2x, where a point is
-                // two pixels: the same label drawn at 13, 12.5 and 12 next to
-                // the HUD's own, matched to it by sliding one profile over the
-                // other, puts the HUD at 12.33, 12.22 and 12.18, and its
-                // ascenders (18.5 px against 19.7, 18.9 and 18.1) agree. The
-                // glyphs below stay at 13.
+                // Fitted at 2x, where a point is two pixels: the same label
+                // drawn at 13, 12.5 and 12 next to the HUD's own, matched to it
+                // by sliding one profile over the other, puts the HUD at 12.33,
+                // 12.22 and 12.18, and its ascenders (18.5 px against 19.7,
+                // 18.9 and 18.1) agree. 13 pt reads slightly wide beside it.
+                // The glyphs below stay at 13.
                 .font(.system(size: 12.25))
                 // Explicit white, not .primary: the label colour is white at
                 // 85 percent, which reads thinner and duller than the HUD's
@@ -54,8 +53,9 @@ struct OSDBannerView: View {
                 .frame(height: 16)
                 // A quarter point down, which puts the baseline where the
                 // HUD's sits: 22.75 pt under the top of the capsule, measured
-                // at 2x on both.
-                .offset(y: 0.25)
+                // at 2x on both. macOS 27 carries its label one row higher,
+                // measured settled on the same rows.
+                .offset(y: OSDBannerService.drawsMacOS27Capsule ? -0.75 : 0.25)
             HStack(spacing: 4) {
                 Image(systemName: leadingSymbol)
                     .font(.system(size: 13))
@@ -86,7 +86,7 @@ struct OSDBannerView: View {
         // of 91) and the knob has no glass. Only a key window draws the real
         // one, and nothing else reaches it: the tint, trackFillColor, the
         // controlActiveState environment value, an overridden isKeyWindow and
-        // a posted key notification were all measured and all changed nothing.
+        // a posted key notification all leave the inactive drawing in place.
         // The panel takes key while the pointer is on it (see setHovering) and
         // it cannot hold key the rest of the time, since that would take the
         // keyboard away from whatever is in front on every key press.
@@ -143,7 +143,11 @@ struct OSDBannerView: View {
     private var ticks: some View {
         HStack(spacing: 0) {
             ForEach(0..<17) { tick in
-                Circle().fill(.white.opacity(0.11)).frame(width: 2, height: 2)
+                // macOS 27 draws the dots brighter: 28 levels over the body
+                // against the 16 that 0.11 draws, measured settled over a mid
+                // grey backdrop.
+                Circle().fill(.white.opacity(OSDBannerService.drawsMacOS27Capsule ? 0.19 : 0.11))
+                    .frame(width: 2, height: 2)
                 if tick < 16 { Spacer(minLength: 0) }
             }
         }

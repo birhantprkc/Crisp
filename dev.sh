@@ -26,7 +26,11 @@ BUILD=$(grep -E '^[[:space:]]*CURRENT_PROJECT_VERSION:' project.yml | head -1 | 
 ./scripts/fetch-sparkle.sh
 
 echo "==> Compiling Crisp $VERSION ($BUILD)..."
+# The target is explicit: on macOS 27 swiftc with no -target stamps the binary
+# with a deployment target above the running system, and LaunchServices then
+# refuses to open the bundle ("requires conditional 28.0", -10825).
 swiftc -O -swift-version 6 -parse-as-library \
+    -target arm64-apple-macos14.0 \
     -import-objc-header Crisp/Crisp-Bridging-Header.h \
     -framework AppKit -framework SwiftUI -framework IOKit -framework CoreAudio \
     -F vendor/Sparkle -framework Sparkle \

@@ -9,7 +9,7 @@ import Combine
 //
 // Split into canvas blocks (docs/panel-resize.md): the header rows, the
 // dropdown lists, and the trailing rows are separate PanelBlocks, so opening a
-// dropdown animates a clip over content that rendered once at natural height —
+// dropdown animates a clip over content that rendered once at natural height,
 // no SwiftUI geometry animates per frame. The shared mutable state (pending
 // switches, slider position, smooth-scaling flags) lives in
 // DisplayModeController so the sibling blocks stay in sync.
