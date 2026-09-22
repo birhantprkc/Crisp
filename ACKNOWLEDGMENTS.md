@@ -43,6 +43,7 @@ SOFTWARE.
 - [@celsinho17](https://github.com/celsinho17) ([#97](https://github.com/didriksg/Crisp/pull/97))
 - [@alexlee2046](https://github.com/alexlee2046) ([#83](https://github.com/didriksg/Crisp/pull/83))
 - [@DEOWL-kan](https://github.com/DEOWL-kan) ([#71](https://github.com/didriksg/Crisp/pull/71))
+- [@Dr8pus](https://github.com/Dr8pus) ([#177](https://github.com/didriksg/Crisp/pull/177))
 
 ## Translations
 
