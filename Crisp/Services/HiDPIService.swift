@@ -75,6 +75,17 @@ final class HiDPIService: @unchecked Sendable {
 
     // MARK: - Smooth Scaling
 
+    /// False on Macs whose chip never renders a HiDPI backing larger than the panel (the
+    /// A18 Pro in the MacBook Neo, #174): a 4K panel gets looks-like 1920x1080 and nothing
+    /// in between, and macOS refuses every size the dense ladder would add.
+    static let smoothScalingSupported: Bool = {
+        var size = 0
+        guard sysctlbyname("machdep.cpu.brand_string", nil, &size, nil, 0) == 0, size > 0 else { return true }
+        var buf = [UInt8](repeating: 0, count: size)
+        guard sysctlbyname("machdep.cpu.brand_string", &buf, &size, nil, 0) == 0 else { return true }
+        return !(String(bytes: buf.prefix { $0 != 0 }, encoding: .utf8)?.hasPrefix("Apple A") ?? false)
+    }()
+
     /// Enables (or re-injects) smooth scaling for a display by injecting the dense HiDPI
     /// ladder into its override plist, then re-probing. The privileged write (admin prompt)
     /// is skipped when the on-disk plist already carries exactly these modes, so re-enabling
