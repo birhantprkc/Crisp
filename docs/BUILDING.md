@@ -36,6 +36,18 @@ open /Applications/Crisp.app
 
 This is the fast dev loop: edit, compile, swap, relaunch, no Xcode involved.
 
+## crispctl
+
+`dev.sh` swaps only the app binary. To build the command line tool on its own (the same sources `scripts/release.sh` uses):
+
+```sh
+swiftc -O -swift-version 6 -target arm64-apple-macos14.0 \
+  Sources/crispctl/*.swift Crisp/Models/CrispControlModel.swift Crisp/Models/BrightnessKeySteps.swift \
+  -o crispctl
+```
+
+With full Xcode, `xcodegen generate && xcodebuild -scheme crispctl -configuration Release` does the same.
+
 ## Before opening a PR
 
 Run `make check`: it runs SwiftLint (strict), the unit tests, the x86_64
