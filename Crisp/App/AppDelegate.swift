@@ -684,6 +684,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 if !KeepAwakeService.isDisabledByPolicy {
                     KeepAwakeRow()
                 }
+                EdgeCrossingRow()
                 ExpandableRowStateful(icon: "display.2", iconActive: false,
                                       label: "Virtual Displays", state: state, key: \.showVirtualDisplays)
             }

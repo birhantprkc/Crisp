@@ -218,6 +218,22 @@
     "%lld%%" : {
       "shouldTranslate" : false
     },
+    "Cross Unaligned Edges" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跨越未对齐的边缘"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跨越未對齊的邊緣"
+          }
+        }
+      }
+    },
     "Stays disconnected until you reconnect it here." : {
       "localizations" : {
         "zh-Hans" : {
@@ -230,6 +246,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "將保持中斷連線狀態，直到你在這裡重新連接。"
+          }
+        }
+      }
+    },
+    "The pointer jumps to the nearest display where edges don't line up" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在边缘未对齐处，指针会跳到最近的显示器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在邊緣未對齊處，指標會跳到最近的顯示器"
           }
         }
       }

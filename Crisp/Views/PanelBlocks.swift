@@ -165,6 +165,41 @@ struct KeepAwakeRow: View {
     }
 }
 
+/// Saved and off by default, unlike Keep Awake; see EdgeCrossingService. Hidden with one
+/// display, which has no shared edge.
+struct EdgeCrossingRow: View {
+    @ObservedObject private var settings = SettingsService.shared
+    @EnvironmentObject private var displayManager: DisplayManager
+
+    var body: some View {
+        if displayManager.displays.count > 1 {
+            toggle
+        }
+    }
+
+    private var toggle: some View {
+        Toggle(isOn: $settings.crossDisplayGaps) {
+            HStack(spacing: 8) {
+                MenuItemIcon(systemName: "cursorarrow.motionlines", color: .purple, active: settings.crossDisplayGaps)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Cross Unaligned Edges")
+                        .font(.body)
+                    Text("The pointer jumps to the nearest display where edges don't line up")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+            }
+        }
+        .toggleStyle(.switch)
+        .controlSize(.small)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 3)
+    }
+}
+
 /// Update notice; renders nothing until an update is known, so it glides in.
 struct UpdateBlockView: View {
     @ObservedObject private var updateService = UpdateService.shared
