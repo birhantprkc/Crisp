@@ -414,11 +414,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         dot.alphaValue = 0
         dot.translatesAutoresizingMaskIntoConstraints = false
         button.addSubview(dot)
+        // Pinned to the centred icon, not the button: the macOS 27 button is wider and taller.
+        let icon = button.image?.size ?? .zero
         NSLayoutConstraint.activate([
             dot.widthAnchor.constraint(equalToConstant: d),
             dot.heightAnchor.constraint(equalToConstant: d),
-            dot.trailingAnchor.constraint(equalTo: button.trailingAnchor, constant: -1),
-            dot.bottomAnchor.constraint(equalTo: button.bottomAnchor, constant: -2)
+            dot.trailingAnchor.constraint(equalTo: button.centerXAnchor, constant: icon.width / 2 + 1),
+            dot.bottomAnchor.constraint(equalTo: button.centerYAnchor, constant: icon.height / 2 + 1)
         ])
         return dot
     }
