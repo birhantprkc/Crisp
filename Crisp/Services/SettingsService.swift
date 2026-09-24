@@ -55,6 +55,7 @@ final class SettingsService: ObservableObject, @unchecked Sendable {
         static let showCombinedBrightness = "crisp.showCombinedBrightness"
         static let combinedBuiltinFactor  = "crisp.combinedBuiltinBrightnessAdjustment"
         static let showVolumeSliders      = "crisp.showVolumeSliders"
+        static let crossDisplayGaps       = "crisp.crossDisplayGaps"
         static let ddcCacheTTL            = "crisp.ddcCacheTTL"
         static let colorPickerHistory     = "crisp.colorPickerHistory"
         static let brightnessKeyTarget    = "crisp.brightnessKeyTarget"
@@ -98,6 +99,15 @@ final class SettingsService: ObservableObject, @unchecked Sendable {
     /// panel; the volume keys keep routing to the monitor.
     @Published var showVolumeSliders: Bool = true {
         didSet { defaults.set(showVolumeSliders, forKey: Keys.showVolumeSliders) }
+    }
+
+    /// Pointer moves past display edges with no display behind them. Also starts and stops
+    /// EdgeCrossingService, at launch through loadAll.
+    @Published var crossDisplayGaps: Bool = false {
+        didSet {
+            defaults.set(crossDisplayGaps, forKey: Keys.crossDisplayGaps)
+            EdgeCrossingService.shared.setEnabled(crossDisplayGaps)
+        }
     }
 
     @Published var ddcCacheTTL: Double = 5.0 {
@@ -250,6 +260,7 @@ final class SettingsService: ObservableObject, @unchecked Sendable {
         }
         showVolumeSliders = defaults.object(forKey: Keys.showVolumeSliders) != nil
             ? defaults.bool(forKey: Keys.showVolumeSliders) : true
+        crossDisplayGaps = defaults.bool(forKey: Keys.crossDisplayGaps)
         ddcCacheTTL = defaults.object(forKey: Keys.ddcCacheTTL) != nil
             ? defaults.double(forKey: Keys.ddcCacheTTL) : 5.0
         colorPickerHistory = defaults.stringArray(forKey: Keys.colorPickerHistory) ?? []
